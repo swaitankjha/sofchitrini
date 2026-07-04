@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "823886800063",
+    "project_id": "chitrini-695ed",
+    "storage_bucket": "chitrini-695ed.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:823886800063:android:e706d5bd268a201976120a",
+        "android_client_info": {
+          "package_name": "com.jhacode.chitrini"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDz0YGheyhnGGmTwd80cWiKDf1jGwsq4IE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
