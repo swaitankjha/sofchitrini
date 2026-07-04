@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources> <color name="background">#121212</color>
+    <color name="textColor">#FFFFFF</color>
+    <color name="hintColor">#B3B3B3</color>
+    <color name="buttonBackground">#BB86FC</color>
+    <color name="buttonTextColor">#000000</color>
+    <color name="editTextBg">#FF303030</color> <!-- dark background -->
+    <color name="buttonBg">#FFBB86FC</color>
+
+
+
+</resources>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="soft_sand">#F5E9DC</color>
+    <color name="deep_indigo">#3E3A6D</color>
+    <color name="background_gradient_start">#3E3A6D</color> <!-- Deep Indigo -->
+    <color name="background_gradient_end">#F5E9DC</color>   <!-- Soft Sand -->
+    <color name="text_primary">#FFFFFF</color>              <!-- Crisp White -->
+    <color name="accent_gold">#FFD700</color>
+    <color name="iconTint">#FF4081</color>
+    <color name="rich_cream">#FFF8E7</color> <!-- Soft cream -->
+    <color name="sanskrit_quote">#7B3F00</color> <!-- Deep warm brown -->
+    <color name="textColor">#000000</color>
+    <color name="hintColor">#808080</color>
+    <color name="buttonBackground">#6200EE</color>
+    <color name="buttonTextColor">#FFFFFF</color>
+    <color name="background">#FFFFFF</color>
+    <!-- Added gray color -->
+    <color name="gray">#808080</color>
+    <color name="editTextBg">#FFFFFFFF</color> <!-- light mode default -->
+    <color name="buttonBg">#FF6200EE</color>
+    <!-- colorSecondary referencing gray -->
+    <color name="colorSecondary">@color/gray</color>
+</resources>
