@@ -1,3 +1,4 @@
+# Android Studio / IntelliJ
 *.iml
 .gradle
 /local.properties
@@ -12,4 +13,20 @@
 /captures
 .externalNativeBuild
 .cxx
+
+# Firebase
+**/google-services.json
+
+# Signing files
+*.jks
+*.keystore
+*.p12
+
+# Local properties
 local.properties
+
+# Log files
+*.log
+
+# Appwrite / Sensitive Configs (Optional: remove if you want them in git)
+# app/src/main/java/com/jhacode/chitrini/storage/AppwriteConfig.kt
