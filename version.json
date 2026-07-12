@@ -1,0 +1,11 @@
+{
+  "versionCode": 2,
+  "versionName": "1.0.1",
+  "mandatory": false,
+  "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/v1.0.1/Chitrini.apk",
+  "changelog": [
+    "Security patches",
+    "New emoji reactions",
+    "Performance improvements"
+  ]
+}
