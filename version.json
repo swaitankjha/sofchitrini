@@ -1,9 +1,9 @@
 {
-  "versionCode": 2,
-  "versionName": "1.2.6",
+  "versionCode": 2.1,
+  "versionName": "2.0.0",
   "mandatory": false,
-  "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/v1.2.6/Chitrini.v6.apk",
+  "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/2.0.0/chitrini.v7.apk",
   "changelog": [
-  "This is jst the demo think i wana check how the things are working"
+  "New InApp Update Feature Is Introduced "
   ]
 }
