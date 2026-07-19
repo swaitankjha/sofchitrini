@@ -2,9 +2,9 @@
   "versionCode": 3,
   "versionName": "3.0.0",
   "mandatory": false,
-  "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/2.0.2/chitrini.v8.apk",
+  "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/2.0.2/chitrini.v9.apk",
   "changelog": [
   "This new update
-    allow links to be directly opend within the chitrini app it self "
+    contains the ui improvement  "
   ]
 }
