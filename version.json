@@ -2,9 +2,9 @@
   "versionCode": 4,
   "versionName": "4.0.0",
   "mandatory": false,
-  "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/2.0.2/chitrini.v9.apk",
+  "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/2.0.2/app-release.apk",
   "changelog": [
   "This new update
-    contains the  chats have more refined desing "
+    more defined and structured the ui off the app"
   ]
 }
