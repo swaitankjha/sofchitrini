@@ -1,7 +1,7 @@
 {
-  "versionCode": 6,
-  "versionName": "6.0.0",
-  "mandatory": true,
+  "versionCode": 5,
+  "versionName": "5.0.0",
+  "mandatory": false,
   "downloadUrl": "https://github.com/swaitankjha/sofchitrini/releases/download/2.0.5/chitrini.apk",
   "changelog": [
 "What's New
