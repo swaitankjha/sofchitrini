@@ -5,77 +5,74 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// 🔥 Restoring the beloved Gold & Cream palette
+// 🔥 High-Contrast OLED Dark - Improved Visibility
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFD4AF37), // Gold
-    onPrimary = Color(0xFF1F1B16),
-    primaryContainer = Color(0xFF634D1F),
+    primary = Color(0xFFD4AF37), 
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFF332D21),
     onPrimaryContainer = Color(0xFFFFE1BC),
-    secondary = Color(0xFFEBD9B4),
-    onSecondary = Color(0xFF372E1F),
-    background = Color(0xFF1A1A17),
-    onBackground = Color(0xFFE6E2D9),
-    surface = Color(0xFF1A1A17),
-    onSurface = Color(0xFFE6E2D9),
-    surfaceVariant = Color(0xFF4C4639),
-    onSurfaceVariant = Color(0xFFCFC6B4)
+    secondary = Color(0xFFB0B0B0),
+    background = Color.Black,
+    surface = Color(0xFF161614),
+    onSurface = Color(0xFFF0F0F0), // Pure bright for readability
+    surfaceVariant = Color(0xFF262624),
+    onSurfaceVariant = Color(0xFFDDDDDD),
+    outline = Color(0xFF444444),
+    error = Color(0xFFFF5252)
 )
 
+// 🔥 Restored Classic Light (Cream & Gold) - Increased Contrast
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF9C7C38), // Classic Chitrini Gold
+    primary = Color(0xFF8B6B23),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFF1E1B4),
-    onPrimaryContainer = Color(0xFF332000),
-    secondary = Color(0xFF6F5A2C),
-    onSecondary = Color.White,
-    background = Color(0xFFFFF8E7), // Rich Cream
-    onBackground = Color(0xFF1F1B16),
-    surface = Color(0xFFFFF8E7),
-    onSurface = Color(0xFF1F1B16),
-    surfaceVariant = Color(0xFFF5E9DC),
-    onSurfaceVariant = Color(0xFF4D4633)
+    primaryContainer = Color(0xFFFFECB3),
+    onPrimaryContainer = Color(0xFF3E2723),
+    secondary = Color(0xFF5D4037),
+    background = Color(0xFFFFFDF0),
+    surface = Color.White,
+    onSurface = Color(0xFF121212), // Sharper black
+    surfaceVariant = Color(0xFFF7F2E8),
+    onSurfaceVariant = Color(0xFF3E2723),
+    outline = Color(0xFFD7CCC8),
+    error = Color(0xFFB71C1C)
 )
 
-// 🔥 Reduced Font Sizes for a cleaner look
 private val ChitriniTypography = Typography(
+    headlineLarge = TextStyle(
+        fontWeight = FontWeight.Black,
+        fontSize = 10.sp, // Increased
+        letterSpacing = (-0.5).sp
+    ),
     headlineMedium = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 24.sp,
-        lineHeight = 32.sp,
-        letterSpacing = 0.sp
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 20.sp, // Increased
+        letterSpacing = (-0.5).sp
+    ),
+    titleLarge = TextStyle(
+        fontWeight = FontWeight.Bold,
+        fontSize = 19.sp // Increased from 18
     ),
     titleMedium = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 14.sp, // Reduced
-        lineHeight = 20.sp,
-        letterSpacing = 0.1.sp
+        fontWeight = FontWeight.Bold,
+        fontSize = 18.sp // Increased
     ),
     bodyLarge = TextStyle(
-        fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
-        fontSize = 14.sp, // Reduced
-        lineHeight = 20.sp,
-        letterSpacing = 0.5.sp
+        fontSize = 16.sp, // Increased from 15 (approx 0.5x felt scale)
+        lineHeight = 24.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
-        fontSize = 12.sp, // Reduced
-        lineHeight = 16.sp,
-        letterSpacing = 0.25.sp
+        fontSize = 15.sp, // Increased from 14
+        lineHeight = 22.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Medium,
-        fontSize = 10.sp, // Reduced
-        lineHeight = 14.sp,
-        letterSpacing = 0.5.sp
+        fontWeight = FontWeight.Bold,
+        fontSize = 11.sp, // Increased from 10
+        letterSpacing = 1.sp
     )
 )
 

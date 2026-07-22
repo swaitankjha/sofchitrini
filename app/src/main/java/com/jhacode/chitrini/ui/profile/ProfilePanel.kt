@@ -3,7 +3,10 @@ package com.jhacode.chitrini.ui.profile
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -66,7 +69,6 @@ fun ProfilePanel(
 
     val primaryColor = MaterialTheme.colorScheme.primary.toArgb()
 
-    // 2. Crop Launcher
     val cropLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -75,26 +77,40 @@ fun ProfilePanel(
             resultUri?.let { uri ->
                 isUploading = true
                 scope.launch {
-                    val uploadResult = MediaUploader.uploadMedia(context, uri, "image/jpeg")
-                    if (uploadResult != null) {
-                        val data = ProfilePicData(uploadResult.fileId, uploadResult.encryptedKey, uploadResult.iv)
-                        MainRepository.getInstance().storeProfilePic(Gson().toJson(data))
-                        chatListViewModel.refreshMyProfilePic(context)
+                    try {
+                        com.jhacode.chitrini.storage.AppwriteManager.init(context)
+                        val uploadResult = MediaUploader.uploadMedia(context, uri, "image/jpeg")
+                        
+                        if (uploadResult?.fileId != null && uploadResult.encryptedKey != null && uploadResult.iv != null) {
+                            val data = ProfilePicData(uploadResult.fileId, uploadResult.encryptedKey, uploadResult.iv)
+                            MainRepository.getInstance().storeProfilePic(Gson().toJson(data))
+                            kotlinx.coroutines.delay(1000)
+                            chatListViewModel.refreshMyProfilePic(context)
+                            Toast.makeText(context, "Profile photo updated!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val errorMsg = uploadResult?.error ?: "Unknown error"
+                            Toast.makeText(context, "Upload failed: $errorMsg", Toast.LENGTH_LONG).show()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "System Error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    } finally {
+                        isUploading = false
                     }
-                    isUploading = false
                 }
             }
+        } else if (result.resultCode == UCrop.RESULT_ERROR) {
+            val cropError = result.data?.let { UCrop.getError(it) }
+            Toast.makeText(context, "Crop error: ${cropError?.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
-    // 1. Gallery Launcher
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { sourceUri ->
-            val destinationUri = Uri.fromFile(File(context.cacheDir, "cropped_profile_${System.currentTimeMillis()}.jpg"))
+            val destinationUri = Uri.fromFile(File(context.cacheDir, "cp_${System.currentTimeMillis()}.jpg"))
             val options = UCrop.Options()
-            options.setCompressionFormat(android.graphics.Bitmap.CompressFormat.JPEG)
+            options.setCompressionFormat(Bitmap.CompressFormat.JPEG)
             options.setCompressionQuality(90)
             options.setHideBottomControls(false)
             options.setFreeStyleCropEnabled(true)
@@ -104,7 +120,7 @@ fun ProfilePanel(
 
             val uCropIntent = UCrop.of(sourceUri, destinationUri)
                 .withAspectRatio(1f, 1f)
-                .withMaxResultSize(1000, 1000)
+                .withMaxResultSize(800, 800)
                 .withOptions(options)
                 .getIntent(context)
 
@@ -121,25 +137,26 @@ fun ProfilePanel(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.95f))
+                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.98f))
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 24.dp, vertical = 12.dp)
         ) {
             ProfileHeader(
                 username = "@$myUsername",
                 profileFile = myProfilePic,
                 onClose = onClose,
-                onProfileClick = { if (!isUploading) galleryLauncher.launch("image/*") }
+                onProfileClick = { if (!isUploading) galleryLauncher.launch("image/*") },
+                onRemoveClick = { chatListViewModel.removeMyProfilePic() }
             )
 
             if (isUploading) {
                 LinearProgressIndicator(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     color = MaterialTheme.colorScheme.primary
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(24.dp))
 
             ProfileQRSection(
                 username = "@$myUsername",
@@ -147,31 +164,32 @@ fun ProfilePanel(
                 onShareQr = onShareQr
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
 
             Text(
-                "Preferences",
+                "PREFERENCES",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(bottom = 8.dp)
+                color = MaterialTheme.colorScheme.primary, // Gold for visibility
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
             )
 
             SettingsItem(
                 icon = Icons.Default.Settings,
                 title = "Account Settings",
-                subtitle = "Security and data",
+                subtitle = "Privacy, data and theme",
                 onClick = onSettingsClick
             )
 
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 4.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)
             )
 
             NotificationToggle(
                 title = "Discrete Mode",
-                subtitle = if (discreteMode) "Stealth alerts" else "Normal alerts",
+                subtitle = if (discreteMode) "Stealth alerts enabled" else "Standard alert style",
                 checked = discreteMode,
                 onCheckedChange = { 
                     discreteMode = it
@@ -179,7 +197,7 @@ fun ProfilePanel(
                 }
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(48.dp))
 
             Button(
                 onClick = {
@@ -188,16 +206,17 @@ fun ProfilePanel(
                     context.startActivity(Intent(context, LoginActivity::class.java))
                     (context as Activity).finish()
                 },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(24.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(16.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.2f))
             ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Logout Session", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("End Active Session", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
             
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(64.dp))
         }
     }
 }
@@ -210,13 +229,13 @@ fun SettingsItem(icon: ImageVector, title: String, subtitle: String, onClick: ()
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 10.dp),
+            modifier = Modifier.padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -224,15 +243,24 @@ fun SettingsItem(icon: ImageVector, title: String, subtitle: String, onClick: ()
                     icon, 
                     null, 
                     tint = MaterialTheme.colorScheme.primary, 
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+                Text(
+                    title, 
+                    fontWeight = FontWeight.Bold, 
+                    fontSize = 17.sp, // Larger font
+                    color = MaterialTheme.colorScheme.onSurface // Force bright in dark mode
+                )
+                Text(
+                    subtitle, 
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, 
+                    fontSize = 13.sp // Larger font
+                )
             }
-            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -240,13 +268,13 @@ fun SettingsItem(icon: ImageVector, title: String, subtitle: String, onClick: ()
 @Composable
 fun NotificationToggle(title: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(42.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
             contentAlignment = Alignment.Center
         ) {
@@ -254,22 +282,31 @@ fun NotificationToggle(title: String, subtitle: String, checked: Boolean, onChec
                 Icons.Default.NotificationsActive, 
                 null, 
                 tint = MaterialTheme.colorScheme.primary, 
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
+            Text(
+                title, 
+                fontWeight = FontWeight.Bold, 
+                fontSize = 17.sp, // Larger font
+                color = MaterialTheme.colorScheme.onSurface 
+            )
+            Text(
+                subtitle, 
+                color = MaterialTheme.colorScheme.onSurfaceVariant, 
+                fontSize = 13.sp // Larger font
+            )
         }
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                 checkedTrackColor = MaterialTheme.colorScheme.primary
             ),
-            modifier = Modifier.scale(0.75f)
+            modifier = Modifier.scale(0.85f)
         )
     }
 }

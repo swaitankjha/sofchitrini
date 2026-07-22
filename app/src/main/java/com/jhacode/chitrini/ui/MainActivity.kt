@@ -17,6 +17,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
@@ -43,10 +48,16 @@ import com.jhacode.chitrini.ui.theme.ChitriniTheme
 import com.jhacode.chitrini.ui.theme.WallpaperBackground
 import com.jhacode.chitrini.ui.profile.SettingsViewModel
 import com.jhacode.chitrini.repository.MainRepository
+import com.jhacode.chitrini.update.manager.UpdateManager
+import com.jhacode.chitrini.update.model.UpdateState
+import com.jhacode.chitrini.update.repository.UpdateRepository
+import com.jhacode.chitrini.update.ui.UpdateDialog
+import com.jhacode.chitrini.update.viewmodel.UpdateViewModel
 import com.jhacode.chitrini.utils.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 
 @OptIn(ExperimentalMaterial3Api::class)
 enum class Screen { HOME, CHAT }
@@ -85,6 +96,19 @@ class MainActivity : ComponentActivity() {
                 var showQrScanner by remember { mutableStateOf(false) }
                 var showSettings by remember { mutableStateOf(false) }
 
+                // 🔥 Professional Update System setup
+                val updateViewModel = remember {
+                    val client = OkHttpClient()
+                    val repo = UpdateRepository(client, "https://raw.githubusercontent.com/swaitankjha/sofchitrini/main/version.json")
+                    val manager = UpdateManager(context)
+                    UpdateViewModel(repo, manager, com.jhacode.chitrini.BuildConfig.VERSION_CODE)
+                }
+                val updateState by updateViewModel.state.collectAsState()
+
+                LaunchedEffect(Unit) {
+                    updateViewModel.checkForUpdates()
+                }
+
                 // Online status & foreground tracking
                 DisposableEffect(Unit) {
                     val obs = LifecycleEventObserver { _, event ->
@@ -96,6 +120,8 @@ class MainActivity : ComponentActivity() {
                             androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
                                 scope.launch(Dispatchers.IO) { mainRepository.setUserStatus("offline") }
                                 AppState.isForeground = false
+                                AppState.isHiddenChatsVisible = false
+                                AppState.isSelectionModeActive = false
                             }
                             else -> {}
                         }
@@ -110,9 +136,7 @@ class MainActivity : ComponentActivity() {
                     val listener = object : NewEventCallBack {
                         override fun onNewEventReceived(model: DataModel) {
                             when (model.type) {
-                                DataModelType.ChatMessage -> {
-                                    // 🔥 Service handles processing to avoid double sound and double DB saving
-                                }
+                                DataModelType.ChatMessage -> {}
                                 DataModelType.MessageDelivered -> {
                                     scope.launch(Dispatchers.IO) { chatRepository.updateMessageStatus(model.data, "delivered") }
                                 }
@@ -172,6 +196,12 @@ class MainActivity : ComponentActivity() {
                                     AppState.isChatScreenActive = true
                                     activeChatUser = u
                                     currentScreen = Screen.CHAT 
+                                    
+                                    val clearIntent = Intent(context, com.jhacode.chitrini.service.ChitriniService::class.java).apply {
+                                        action = "ACTION_CLEAR_NOTIFICATIONS"
+                                        putExtra("username", u)
+                                    }
+                                    context.startService(clearIntent)
                                 })
                                 Screen.CHAT -> {
                                     val chatId = if (myUsername < (activeChatUser?:"")) "${myUsername}_$activeChatUser" else "${activeChatUser}_$myUsername"
@@ -206,7 +236,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // 🔥 PROFILE PANEL - RIGHT SIDE SLIDE (FIXED ANCHOR)
+                        // PROFILE PANEL
                         val screenWidth = LocalConfiguration.current.screenWidthDp.dp
                         val panelWidth = screenWidth * 0.85f
                         
@@ -216,7 +246,6 @@ class MainActivity : ComponentActivity() {
                             label = "profileSlide"
                         )
 
-                        // Scrim
                         if (showProfile) {
                             Box(
                                 Modifier
@@ -226,7 +255,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // FIXED: Actual panel box anchored to CenterEnd
                         if (showProfile || offsetX < panelWidth) {
                             Box(
                                 modifier = Modifier
@@ -247,9 +275,49 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        if (showSettings) SettingsScreen { showSettings = false }
+                        if (showSettings) SettingsScreen(settingsViewModel) { showSettings = false }
                         if (showAddPeople) AddPeopleScreen({ showAddPeople = false }, { u -> chatListViewModel.sendConnectRequest(u); showAddPeople = false; Toast.makeText(context, "Sent", Toast.LENGTH_SHORT).show() }, { showQrScanner = true })
                         if (showQrScanner) QrScannerScreen({ u -> chatListViewModel.sendConnectRequest(u); showQrScanner = false; showAddPeople = false }, { showQrScanner = false })
+
+                        // 🔥 Global Update Dialogs
+                        if (updateState is UpdateState.UpdateAvailable) {
+                            UpdateDialog(
+                                versionInfo = (updateState as UpdateState.UpdateAvailable).versionInfo,
+                                onUpdate = { updateViewModel.startDownload((updateState as UpdateState.UpdateAvailable).versionInfo.downloadUrl) },
+                                onDismiss = { updateViewModel.resetState() }
+                            )
+                        }
+
+                        if (updateState is UpdateState.Downloading) {
+                            AlertDialog(
+                                onDismissRequest = {},
+                                confirmButton = {},
+                                title = { Text("Downloading Update") },
+                                text = {
+                                    val progress = (updateState as UpdateState.Downloading).progress
+                                    Column {
+                                        LinearProgressIndicator(
+                                            progress = { progress / 100f },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Text("${progress}%", modifier = Modifier.align(Alignment.End))
+                                    }
+                                }
+                            )
+                        }
+                        
+                        if (updateState is UpdateState.Error) {
+                            AlertDialog(
+                                onDismissRequest = { updateViewModel.resetState() },
+                                confirmButton = {
+                                    TextButton(onClick = { updateViewModel.resetState() }) {
+                                        Text("OK")
+                                    }
+                                },
+                                title = { Text("Update Error") },
+                                text = { Text((updateState as UpdateState.Error).message) }
+                            )
+                        }
 
                         BackHandler(showProfile || showAddPeople || showQrScanner || showSettings || currentScreen == Screen.CHAT) {
                             when {
@@ -269,14 +337,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    private fun playDiscreteSound(context: Context) {
-        try {
-            val uri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-            val r = android.media.RingtoneManager.getRingtone(context, uri)
-            r.play()
-        } catch (e: Exception) {}
     }
 
     private fun requestPermissions() {

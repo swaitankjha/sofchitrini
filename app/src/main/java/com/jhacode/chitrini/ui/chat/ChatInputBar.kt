@@ -1,47 +1,66 @@
 package com.jhacode.chitrini.ui.chat
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.jhacode.chitrini.data.local.entity.MessageEntity
+import java.io.File
+import kotlinx.coroutines.delay
 
 @Composable
 fun ChatInputBar(
     onSend: (String) -> Unit,
-    onMediaSelected: (Uri, String) -> Unit,
+    onMediaSelected: (Uri, String, String?) -> Unit,
     isUploading: Boolean,
     replyingTo: MessageEntity? = null,
-    onCancelReply: () -> Unit = {}
+    editingMessage: MessageEntity? = null,
+    onCancelReply: () -> Unit = {},
+    onCancelEdit: () -> Unit = {},
+    onTyping: (Boolean) -> Unit = {}
 ) {
     var text by remember { mutableStateOf("") }
     val context = LocalContext.current
+    
+    LaunchedEffect(editingMessage) {
+        if (editingMessage != null) {
+            text = editingMessage.text
+        }
+    }
 
     val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let {
             val mimeType = context.contentResolver.getType(it) ?: "image/jpeg"
-            onMediaSelected(it, mimeType)
+            onMediaSelected(it, mimeType, if (text.isBlank()) null else text.trim())
+            text = "" 
         }
     }
 
@@ -49,120 +68,79 @@ fun ChatInputBar(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-        tonalElevation = 8.dp
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        tonalElevation = 4.dp
     ) {
-        Column {
-            // 🔥 Reply Preview
-            if (replyingTo != null) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+            
+            // Previews...
+            if (editingMessage != null) {
                 Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(bottom = 6.dp).fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(0.3f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(4.dp)
-                                .height(32.dp)
-                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Replying to @${replyingTo.sender}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 10.sp
-                            )
-                            Text(
-                                text = if (replyingTo.messageType == "TEXT") replyingTo.text else "[${replyingTo.messageType}]",
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 11.sp
-                            )
-                        }
-                        IconButton(onClick = onCancelReply, modifier = Modifier.size(24.dp)) {
-                            Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
-                        }
+                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Edit, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(editingMessage.text, maxLines = 1, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        IconButton(onClick = onCancelEdit, Modifier.size(24.dp)) { Icon(Icons.Default.Close, null, Modifier.size(16.dp)) }
                     }
                 }
             }
 
-            Row(
-                modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                
-                // Attach Button
-                IconButton(
-                    onClick = { launcher.launch("image/*") },
-                    modifier = Modifier
-                        .padding(bottom = 4.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+            if (replyingTo != null) {
+                Surface(
+                    modifier = Modifier.padding(bottom = 6.dp).fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(0.5f),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    if (isUploading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp), 
-                            strokeWidth = 2.dp, 
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Image, 
-                            contentDescription = null, 
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(3.dp).height(24.dp).background(MaterialTheme.colorScheme.primary))
+                        Spacer(Modifier.width(8.dp))
+                        Text(replyingTo.text, maxLines = 1, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        IconButton(onClick = onCancelReply, Modifier.size(24.dp)) { Icon(Icons.Default.Close, null, Modifier.size(16.dp)) }
                     }
                 }
+            }
 
-                Spacer(Modifier.width(8.dp))
+            Row(verticalAlignment = Alignment.Bottom) {
+                IconButton(onClick = { launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }) {
+                    if (isUploading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
+                }
 
-                // 🔥 Input Field with Gboard support
-                Surface(
+                // 🔥 Simplified Wrapper to prevent touch blocking
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(vertical = 4.dp)
-                        .clip(RoundedCornerShape(24.dp)),
-                    color = MaterialTheme.colorScheme.surfaceVariant
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.4f), RoundedCornerShape(24.dp))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(0.1f), RoundedCornerShape(24.dp))
                 ) {
                     GboardTextField(
                         value = text,
-                        onValueChange = { text = it },
-                        onMediaSelected = onMediaSelected,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        onValueChange = { 
+                            text = it
+                            onTyping(it.isNotEmpty())
+                        },
+                        onMediaSelected = { uri, mimeType -> 
+                            onMediaSelected(uri, mimeType, if (text.isBlank()) null else text.trim())
+                            text = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
                         placeholder = "Message..."
                     )
                 }
 
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(6.dp))
 
-                // Send Button
                 FloatingActionButton(
-                    onClick = {
-                        if (text.isNotBlank()) {
-                            onSend(text)
-                            text = ""
-                        }
-                    },
+                    onClick = { if (text.isNotBlank()) { onSend(text); text = "" } },
                     modifier = Modifier.size(48.dp),
                     shape = CircleShape,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
+                    containerColor = MaterialTheme.colorScheme.primary
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.AutoMirrored.Filled.Send, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }

@@ -1,8 +1,10 @@
 package com.jhacode.chitrini.ui.theme
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -20,23 +22,31 @@ fun WallpaperBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
+    
     Box(modifier = modifier.fillMaxSize()) {
+        // 🔥 Background Content
         if (!uri.isNullOrEmpty()) {
             AsyncImage(
                 model = uri.toUri(),
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(if (isBlur) Modifier.blur(15.dp) else Modifier),
+                    .then(if (isBlur) Modifier.blur(12.dp) else Modifier), // 🔥 Reduced blur radius for performance
                 contentScale = ContentScale.Crop
             )
-            // Overlay to ensure text readability
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (isBlur) 0.1f else 0.05f)))
-        } else if (stockColor != null) {
-            Box(Modifier.fillMaxSize().background(Color(stockColor.toLong())))
+            // Intelligent readable overlay
+            Box(
+                Modifier.fillMaxSize().background(
+                    if (isDark) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.3f)
+                )
+            )
+        } else if (stockColor != null && stockColor != 0) {
+            // Direct use of ARGB Int
+            Box(Modifier.fillMaxSize().background(Color(stockColor)))
         } else {
-            // Default background if nothing is set
-            Box(Modifier.fillMaxSize().background(Color(0xFFFFF8E7)))
+            // Default based on Theme
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
         }
         
         content()

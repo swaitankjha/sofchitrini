@@ -24,6 +24,7 @@ public class FirebaseClient {
     private static final String OWNER_UID_FIELD_NAME = "owner_uid";
     private static final String STATUS_FIELD_NAME = "status";
     private static final String PROFILE_PIC_FIELD_NAME = "profile_pic";
+    private static final String TYPING_NODE_NAME = "typing"; // 🔥 Changed to 'typing' to match rules
 
     // ================= LOGIN =================
 
@@ -81,7 +82,56 @@ public class FirebaseClient {
 
     public void setUserStatus(String status) {
         if (currentUsername == null) return;
+        
+        // 🔥 Respect Privacy Setting
+        android.content.Context ctx = com.jhacode.chitrini.repository.MainRepository.getInstance().getContext();
+        if (ctx != null) {
+            android.content.SharedPreferences prefs = ctx.getSharedPreferences("chitrini_prefs", android.content.Context.MODE_PRIVATE);
+            if (!prefs.getBoolean("show_online_status", true) && status.equals("online")) {
+                status = "offline"; // Show as offline if privacy enabled
+            }
+        }
+
         dbRef.child(currentUsername).child(STATUS_FIELD_NAME).setValue(status);
+        
+        // 🔥 Clear typing on disconnect
+        if (status.equals("offline")) {
+            dbRef.child(currentUsername).child(TYPING_NODE_NAME).removeValue();
+        }
+    }
+
+    public void setTypingStatus(String targetUsername, boolean isTyping) {
+        if (currentUsername == null || targetUsername == null) return;
+        
+        DatabaseReference ref = dbRef.child(currentUsername).child(TYPING_NODE_NAME).child(targetUsername);
+        
+        if (isTyping) {
+            ref.setValue(true);
+            ref.onDisconnect().setValue(false);
+        } else {
+            ref.setValue(false);
+        }
+    }
+
+    public void observeUserTyping(String otherUsername, TypingCallBack callBack) {
+        if (currentUsername == null) return;
+        
+        // Listen to: users/$otherUsername/typing/$myUsername
+        dbRef.child(otherUsername)
+             .child(TYPING_NODE_NAME)
+             .child(currentUsername)
+             .addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Boolean isTyping = snapshot.getValue(Boolean.class);
+                callBack.onTypingChanged(isTyping != null && isTyping);
+            }
+            @Override public void onCancelled(@NonNull DatabaseError error) {}
+        });
+    }
+
+    public interface TypingCallBack {
+        void onTypingChanged(boolean isTyping);
     }
 
     public void observeUserStatus(String username, StatusCallBack callBack) {
@@ -209,5 +259,21 @@ public class FirebaseClient {
                 callBack.onSuccess(null);
             }
         });
+    }
+
+    public void checkAppUpdate(UpdateCallBack callBack) {
+        dbRef.child("app_config").get().addOnSuccessListener(snapshot -> {
+            if (snapshot.exists()) {
+                Long latestVersion = snapshot.child("latest_version").getValue(Long.class);
+                String apkUrl = snapshot.child("apk_url").getValue(String.class);
+                if (latestVersion != null && apkUrl != null) {
+                    callBack.onUpdateInfoReceived(latestVersion.intValue(), apkUrl);
+                }
+            }
+        });
+    }
+
+    public interface UpdateCallBack {
+        void onUpdateInfoReceived(int latestVersion, String apkUrl);
     }
 }

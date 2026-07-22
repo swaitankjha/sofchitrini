@@ -6,6 +6,7 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
+import coil.decode.VideoFrameDecoder
 
 class ChitriniApp : Application(), ImageLoaderFactory {
     override fun newImageLoader(): ImageLoader {
@@ -16,6 +17,7 @@ class ChitriniApp : Application(), ImageLoaderFactory {
                 } else {
                     add(GifDecoder.Factory())
                 }
+                add(VideoFrameDecoder.Factory()) // 🔥 Added for video thumbnails
             }
             .build()
     }

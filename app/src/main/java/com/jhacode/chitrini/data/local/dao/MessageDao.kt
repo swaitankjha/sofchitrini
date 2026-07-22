@@ -34,4 +34,24 @@ interface MessageDao {
 
     @Query("UPDATE messages SET status = :status WHERE messageId = :messageId")
     suspend fun updateMessageStatus(messageId: String, status: String)
+
+    @Query("""
+        UPDATE messages 
+        SET text = '[deleted_by_sender]', 
+            messageType = 'TEXT',
+            fileId = NULL,
+            encryptedKey = NULL,
+            iv = NULL,
+            mimeType = NULL,
+            fileSize = NULL,
+            originalFileName = NULL
+        WHERE messageId = :messageId
+    """)
+    suspend fun markAsDeleted(messageId: String)
+
+    @Query("UPDATE messages SET reactions = :reactionsJson WHERE messageId = :messageId")
+    suspend fun updateReactions(messageId: String, reactionsJson: String?)
+
+    @Query("UPDATE messages SET text = :newText, isEdited = 1 WHERE messageId = :messageId")
+    suspend fun editMessage(messageId: String, newText: String)
 }

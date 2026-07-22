@@ -30,6 +30,12 @@ class SettingsViewModel(context: Context) : ViewModel() {
     private val _themeMode = MutableStateFlow(prefs.getString("theme_mode", "System") ?: "System")
     val themeMode = _themeMode.asStateFlow()
 
+    private val _showTypingStatus = MutableStateFlow(prefs.getBoolean("show_typing_status", true))
+    val showTypingStatus = _showTypingStatus.asStateFlow()
+
+    private val _showOnlineStatus = MutableStateFlow(prefs.getBoolean("show_online_status", true))
+    val showOnlineStatus = _showOnlineStatus.asStateFlow()
+
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { p, key ->
         when (key) {
             "app_wallpaper_uri" -> _appWallpaperUri.value = p.getString(key, "")
@@ -39,6 +45,8 @@ class SettingsViewModel(context: Context) : ViewModel() {
             "chat_stock_color" -> _chatStockColor.value = if (p.contains(key)) p.getInt(key, 0) else null
             "chat_wallpaper_blur" -> _chatBlur.value = p.getBoolean(key, false)
             "theme_mode" -> _themeMode.value = p.getString(key, "System") ?: "System"
+            "show_typing_status" -> _showTypingStatus.value = p.getBoolean(key, true)
+            "show_online_status" -> _showOnlineStatus.value = p.getBoolean(key, true)
         }
     }
 

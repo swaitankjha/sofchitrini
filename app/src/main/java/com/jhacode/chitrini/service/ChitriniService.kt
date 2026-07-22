@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.*
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -13,12 +14,14 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
 import com.jhacode.chitrini.R
 import com.jhacode.chitrini.data.local.db.ChatDatabase
 import com.jhacode.chitrini.data.local.entity.MessageEntity
 import com.jhacode.chitrini.data.repository.ChatRepositoryImpl
 import com.jhacode.chitrini.repository.MainRepository
 import com.jhacode.chitrini.ui.CallActivity
+import com.jhacode.chitrini.ui.MainActivity
 import com.jhacode.chitrini.utils.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +33,7 @@ class ChitriniService : Service() {
     private val CHANNEL_ID = "CHITRINI_SERVICE"
     private val MSG_CHANNEL_ID = "CHITRINI_MSG"
     private val CALL_CHANNEL_ID = "CHITRINI_CALL"
+    private val GROUP_KEY_MESSAGES = "com.jhacode.chitrini.MESSAGES"
 
     private lateinit var mainRepository: MainRepository
     private lateinit var chatRepository: ChatRepositoryImpl
@@ -38,6 +42,8 @@ class ChitriniService : Service() {
     private var currentRingtone: Ringtone? = null
     private var listenerStarted = false
     private var ringingCallSender: String? = null
+
+    private val activeMessagingStyles = mutableMapOf<String, NotificationCompat.MessagingStyle>()
 
     override fun onCreate() {
         super.onCreate()
@@ -48,11 +54,20 @@ class ChitriniService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-
-        if (intent?.action == "ACTION_STOP_RINGTONE") {
-            stopRingtone()
-            NotificationManagerCompat.from(this).cancel(2)
-            return START_NOT_STICKY
+        when (intent?.action) {
+            "ACTION_STOP_RINGTONE" -> {
+                stopRingtone()
+                NotificationManagerCompat.from(this).cancel(2)
+                return START_NOT_STICKY
+            }
+            "ACTION_CLEAR_NOTIFICATIONS" -> {
+                val user = intent.getStringExtra("username")
+                if (user != null) {
+                    activeMessagingStyles.remove(user)
+                    NotificationManagerCompat.from(this).cancel(user.hashCode())
+                }
+                return START_NOT_STICKY
+            }
         }
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -115,10 +130,10 @@ class ChitriniService : Service() {
                         ringingCallSender = null
                         AppState.isRinging = false
                         stopRingtone()
-                        NotificationManagerCompat.from(this@ChitriniService).cancel(2)
+                        val nm = NotificationManagerCompat.from(this@ChitriniService)
+                        nm.cancel(2)
                     }
                     DataModelType.ChatMessage -> {
-                        // 🔥 Service is now the sole processor for incoming messages
                         MessageProcessor.processIncomingMessage(
                             context = this@ChitriniService,
                             scope = serviceScope,
@@ -130,9 +145,9 @@ class ChitriniService : Service() {
                                     if (discreteMode) playNotificationSound()
                                     else showIncomingMessageNotification(sender, text)
                                 } else {
-                                    // App is in foreground, but user might be on Home screen or another chat
                                     if (!(AppState.isChatScreenActive && AppState.currentChatUser == sender)) {
-                                        playNotificationSound()
+                                        if (discreteMode) playNotificationSound()
+                                        else showIncomingMessageNotification(sender, text)
                                     }
                                 }
                             }
@@ -143,6 +158,9 @@ class ChitriniService : Service() {
                     }
                     DataModelType.MessageSeen -> {
                         serviceScope.launch(Dispatchers.IO) { chatRepository.updateMessageStatus(model.data, "seen") }
+                    }
+                    DataModelType.DeleteMessage -> {
+                        serviceScope.launch(Dispatchers.IO) { chatRepository.markAsDeleted(model.data, this@ChitriniService) }
                     }
                     else -> {}
                 }
@@ -186,17 +204,51 @@ class ChitriniService : Service() {
     }
 
     private fun showIncomingMessageNotification(sender: String, text: String) {
+        val notificationManager = NotificationManagerCompat.from(this)
+        val user = Person.Builder().setName("Me").build()
+        val other = Person.Builder().setName("@$sender").build()
+        
+        val style = activeMessagingStyles.getOrPut(sender) {
+            NotificationCompat.MessagingStyle(user)
+                .setConversationTitle("Chat with @$sender")
+        }
+        
+        style.addMessage(text, System.currentTimeMillis(), other)
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(this, sender.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE)
+
+        val markReadIntent = Intent(this, NotificationReceiver::class.java).apply {
+            action = "ACTION_MARK_AS_READ"
+            putExtra("sender", sender)
+        }
+        val markReadPendingIntent = PendingIntent.getBroadcast(this, sender.hashCode() + 1, markReadIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
         val builder = NotificationCompat.Builder(this, MSG_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Message from @$sender")
-            .setContentText(text)
+            .setLargeIcon(BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
+            .setStyle(style)
+            .setContentIntent(pendingIntent)
+            .addAction(R.drawable.ic_launcher_foreground, "Mark as Read", markReadPendingIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
+            .setGroup(GROUP_KEY_MESSAGES)
+            .setAutoCancel(true)
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            NotificationManagerCompat.from(this).notify(System.currentTimeMillis().toInt(), builder.build())
+            notificationManager.notify(sender.hashCode(), builder.build())
+            
+            val summaryNotification = NotificationCompat.Builder(this, MSG_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher_foreground)
+                .setGroup(GROUP_KEY_MESSAGES)
+                .setGroupSummary(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
+            
+            notificationManager.notify(0, summaryNotification)
         }
     }
 
@@ -207,17 +259,17 @@ class ChitriniService : Service() {
             putExtra("isVideo", isVideo)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
-        val fullScreenPendingIntent = PendingIntent.getActivity(this, 0, fullScreenIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val fullScreenPendingIntent = PendingIntent.getActivity(this, 1, fullScreenIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val builder = NotificationCompat.Builder(this, CALL_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("Incoming ${if (isVideo) "Video" else "Audio"} Call")
             .setContentText("@$sender is calling...")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setFullScreenIntent(fullScreenPendingIntent, true)
             .setOngoing(true)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE))
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
             NotificationManagerCompat.from(this).notify(2, builder.build())
@@ -227,11 +279,16 @@ class ChitriniService : Service() {
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
-            val serviceChannel = NotificationChannel(CHANNEL_ID, "Background Service", NotificationManager.IMPORTANCE_MIN)
-            val msgChannel = NotificationChannel(MSG_CHANNEL_ID, "Messages", NotificationManager.IMPORTANCE_HIGH)
+            val serviceChannel = NotificationChannel(CHANNEL_ID, "Sync Service", NotificationManager.IMPORTANCE_MIN)
+            val msgChannel = NotificationChannel(MSG_CHANNEL_ID, "Messages", NotificationManager.IMPORTANCE_HIGH).apply {
+                enableVibration(true)
+                setShowBadge(true)
+            }
             val callChannel = NotificationChannel(CALL_CHANNEL_ID, "Calls", NotificationManager.IMPORTANCE_HIGH).apply {
                 setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE), null)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                enableLights(true)
+                lightColor = android.graphics.Color.GREEN
             }
             manager?.createNotificationChannel(serviceChannel)
             manager?.createNotificationChannel(msgChannel)

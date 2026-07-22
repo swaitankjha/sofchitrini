@@ -18,12 +18,13 @@ object MediaUploader {
     private const val TAG = "MediaUploader"
 
     data class UploadResult(
-        val fileId: String,
-        val encryptedKey: String,
-        val iv: String,
-        val mimeType: String,
-        val fileSize: Long,
-        val originalFileName: String? = null
+        val fileId: String? = null,
+        val encryptedKey: String? = null,
+        val iv: String? = null,
+        val mimeType: String? = null,
+        val fileSize: Long = 0,
+        val originalFileName: String? = null,
+        val error: String? = null // 🔥 Added for debugging
     )
 
     suspend fun uploadMedia(
@@ -33,17 +34,24 @@ object MediaUploader {
         onProgress: (Double) -> Unit = {}
     ): UploadResult? = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "🚀 Starting upload for URI: $uri")
+            
             // 1. Ensure Appwrite Session
             val userId = AppwriteManager.ensureSession()
             if (userId == null) {
                 Log.e(TAG, "❌ Cannot upload: Appwrite session failed")
-                return@withContext null
+                return@withContext UploadResult(error = "Appwrite session failed. Check Anonymous Auth.")
             }
 
-            // 2. Read bytes
-            val originalBytes = context.contentResolver.openInputStream(uri)?.use { 
-                it.readBytes() 
-            } ?: return@withContext null
+            // 2. Read bytes safely
+            val originalBytes = try {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to read bytes from URI: $uri", e)
+                null
+            } ?: return@withContext UploadResult(error = "Failed to read file from storage.")
+            
+            Log.d(TAG, "📄 Read ${originalBytes.size} bytes")
             
             val originalFileName = getFileName(context, uri)
 
@@ -55,21 +63,30 @@ object MediaUploader {
             }
 
             // 4. Encrypt locally
-            val encryptedBundle = MediaCryptoManager.encrypt(bytesToEncrypt) ?: return@withContext null
+            val encryptedBundle = MediaCryptoManager.encrypt(bytesToEncrypt) ?: run {
+                Log.e(TAG, "❌ Encryption failed")
+                return@withContext UploadResult(error = "Local encryption failed.")
+            }
 
-            // 5. Create temporary file for Appwrite (with extension to satisfy Appwrite filters)
-            val tempFile = File(context.cacheDir, "upload_" + ID.unique() + ".enc")
+            // 5. Create temporary file for Appwrite
+            val tempFile = File(context.cacheDir, "up_${System.currentTimeMillis()}.enc")
             FileOutputStream(tempFile).use { it.write(encryptedBundle.encryptedBytes) }
 
             // 6. Upload to Appwrite
-            Log.d(TAG, "Uploading encrypted file (${bytesToEncrypt.size} bytes) as .enc to Appwrite...")
-            val response = AppwriteManager.storage.createFile(
-                bucketId = AppwriteConfig.APPWRITE_BUCKET_ID,
-                fileId = ID.unique(),
-                file = InputFile.fromFile(tempFile)
-            )
+            Log.d(TAG, "📤 Uploading to Appwrite bucket: ${AppwriteConfig.APPWRITE_BUCKET_ID}")
+            
+            val response = try {
+                AppwriteManager.storage.createFile(
+                    bucketId = AppwriteConfig.APPWRITE_BUCKET_ID,
+                    fileId = ID.unique(),
+                    file = InputFile.fromFile(tempFile)
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Appwrite Storage Error: ${e.message}")
+                return@withContext UploadResult(error = "Appwrite: ${e.message}")
+            }
 
-            // 7. 🔥 OPTIMIZATION: Save decrypted version to local cache so sender sees it immediately
+            // 7. Save decrypted version to local cache
             val cachedFile = File(context.cacheDir, "media_${response.id}")
             FileOutputStream(cachedFile).use { it.write(bytesToEncrypt) }
 
@@ -86,8 +103,8 @@ object MediaUploader {
                 originalFileName = originalFileName
             )
         } catch (e: Exception) {
-            Log.e(TAG, "❌ Media upload failed: ${e.message}", e)
-            null
+            Log.e(TAG, "❌ Media upload fatal error: ${e.message}", e)
+            UploadResult(error = "Fatal: ${e.message}")
         }
     }
 

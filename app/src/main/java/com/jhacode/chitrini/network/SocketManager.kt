@@ -8,59 +8,46 @@ import org.json.JSONObject
 object SocketManager {
 
     private const val TAG = "SocketManager"
-    private const val SERVER_URL =
-        "https://chitrini-server.onrender.com"
+    private const val SERVER_URL = "https://chitrini-server.onrender.com"
 
     private var socket: Socket? = null
     private var currentUser: String? = null
+    private var lastJoinedChatId: String? = null // 🔥 Store to re-join on reconnect
 
 // =========================
 // CALLBACKS
 // =========================
 
-    private val connectRequestCallbacks =
-        mutableListOf<(String) -> Unit>()
-
-    private val connectAcceptCallbacks =
-        mutableListOf<(String) -> Unit>()
-
-    private val messageCallbacks =
-        mutableListOf<(String, String, String) -> Unit>()
-
-
+    private val connectRequestCallbacks = mutableListOf<(String) -> Unit>()
+    private val connectAcceptCallbacks = mutableListOf<(String) -> Unit>()
+    private val messageCallbacks = mutableListOf<(String, String, String) -> Unit>()
+    private val typingCallbacks = mutableListOf<(String, String, Boolean) -> Unit>()
 
     object Events {
         const val CONNECT_REQUEST = "connect_request"
         const val CONNECT_ACCEPT = "connect_accept"
         const val CHAT_MESSAGE = "chat_message"
+        const val TYPING = "typing"
+        const val JOIN_CHAT = "join_chat"
+        const val LEAVE_CHAT = "leave_chat"
     }
 
-
-
     fun connect(username: String) {
-
-        if (
-            socket?.connected() == true &&
-            currentUser == username
-        ) {
+        if (socket?.connected() == true && currentUser == username) {
             Log.d(TAG, "Already connected as $username")
             return
         }
 
-        Log.d(TAG, "Connecting for user: $username")
         disconnect()
-
         currentUser = username
 
         val options = IO.Options().apply {
-            // Render and other modern hosts work better with websocket directly
-            // as they might not support sticky sessions required for polling.
             transports = arrayOf("websocket")
             forceNew = true
             reconnection = true
             reconnectionAttempts = Int.MAX_VALUE
             reconnectionDelay = 1000
-            timeout = 20000 // 20 seconds timeout
+            timeout = 20000
         }
 
         try {
@@ -73,6 +60,12 @@ object SocketManager {
         socket?.on(Socket.EVENT_CONNECT) {
             Log.d(TAG, ">>> SOCKET CONNECTED <<<")
             socket?.emit("register", username)
+            
+            // 🔥 RE-JOIN LAST CHAT ROOM IF ANY
+            lastJoinedChatId?.let { cid ->
+                socket?.emit(Events.JOIN_CHAT, cid)
+                Log.d(TAG, "Re-joined chat room: $cid")
+            }
         }
 
         socket?.on("registered") {
@@ -80,211 +73,108 @@ object SocketManager {
         }
 
         socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
-            val err = args.getOrNull(0)
-            Log.e(TAG, "CONNECT ERROR: $err")
+            Log.e(TAG, "CONNECT ERROR: ${args.getOrNull(0)}")
         }
-
-        socket?.on(Socket.EVENT_DISCONNECT) { reason ->
-            Log.e(TAG, "SOCKET DISCONNECTED: ${reason.getOrNull(0)}")
-        }
-
-        // =========================
-        // CONNECT REQUEST
-        // =========================
 
         socket?.on(Events.CONNECT_REQUEST) { args ->
             try {
                 val obj = args[0] as JSONObject
-                val from = obj.getString("from")
-
-                Log.d(TAG, "RECEIVED REQUEST FROM: $from")
-
-                connectRequestCallbacks.forEach { callback ->
-                    callback(from)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error parsing CONNECT_REQUEST", e)
-            }
+                connectRequestCallbacks.forEach { it(obj.getString("from")) }
+            } catch (e: Exception) {}
         }
-
-        // =========================
-        // CONNECT ACCEPT
-        // =========================
 
         socket?.on(Events.CONNECT_ACCEPT) { args ->
             try {
                 val obj = args[0] as JSONObject
-                val from = obj.getString("from")
-
-                Log.d(TAG, "RECEIVED ACCEPT FROM: $from")
-
-                connectAcceptCallbacks.forEach { callback ->
-                    callback(from)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error parsing CONNECT_ACCEPT", e)
-            }
+                connectAcceptCallbacks.forEach { it(obj.getString("from")) }
+            } catch (e: Exception) {}
         }
-
-        // =========================
-        // CHAT MESSAGE
-        // =========================
 
         socket?.on(Events.CHAT_MESSAGE) { args ->
             try {
                 val obj = args[0] as JSONObject
-                val chatId = obj.getString("chatId")
+                messageCallbacks.forEach { it(obj.getString("chatId"), obj.getString("from"), obj.getString("message")) }
+            } catch (e: Exception) {}
+        }
+
+        socket?.on(Events.TYPING) { args ->
+            try {
+                val obj = args[0] as JSONObject
+                val cid = obj.getString("chatId")
                 val from = obj.getString("from")
-                val message = obj.getString("message")
-
-                Log.d(TAG, "RECEIVED MESSAGE: $message FROM: $from IN CHAT: $chatId")
-
-                messageCallbacks.forEach { callback ->
-                    callback(chatId, from, message)
-                }
+                val isTyping = obj.getBoolean("isTyping")
+                typingCallbacks.forEach { it(cid, from, isTyping) }
             } catch (e: Exception) {
-                Log.e(TAG, "Error parsing CHAT_MESSAGE", e)
+                Log.e(TAG, "Typing parse error", e)
             }
         }
 
         socket?.connect()
     }
 
-// =========================
-// DISCONNECT
-// =========================
-
     fun disconnect() {
-
         socket?.disconnect()
-
         socket = null
-
         Log.d(TAG, "Disconnected")
     }
 
-// =========================
-// CONNECTION CHECK
-// =========================
-
-    private fun isConnected(): Boolean {
-
-        val connected =
-            socket?.connected() == true
-
-        if (!connected) {
-
-            Log.e(
-                TAG,
-                "Socket not connected"
-            )
-        }
-
-        return connected
-    }
-
-// =========================
-// SEND CONNECT REQUEST
-// =========================
+    private fun isConnected() = socket?.connected() == true
 
     fun sendConnectRequest(toUser: String) {
-
-        Log.d(TAG, "TRY REQUEST -> $toUser from $currentUser")
-
-        if (toUser.isBlank() || toUser == currentUser) {
-            Log.w(TAG, "Invalid toUser: $toUser")
-            return
-        }
-
-        if (!isConnected()) {
-            Log.e(TAG, "Cannot send request: Not connected")
-            return
-        }
-
+        if (toUser.isBlank() || toUser == currentUser || !isConnected()) return
         val obj = JSONObject().apply {
             put("to", toUser)
-            put("from", currentUser) // Include sender!
+            put("from", currentUser)
         }
-
         socket?.emit(Events.CONNECT_REQUEST, obj)
-        Log.d(TAG, "REQUEST EMITTED to $toUser")
     }
 
-    fun onConnectRequest(
-        callback: (String) -> Unit
-    ) {
-        connectRequestCallbacks += callback
-    }
-
-// =========================
-// ACCEPT REQUEST
-// =========================
+    fun onConnectRequest(callback: (String) -> Unit) { connectRequestCallbacks += callback }
 
     fun acceptConnectRequest(fromUser: String) {
-
-        if (!isConnected()) {
-            Log.e(TAG, "Cannot accept request: Not connected")
-            return
-        }
-
+        if (!isConnected()) return
         val obj = JSONObject().apply {
             put("to", fromUser)
-            put("from", currentUser) // Include sender!
+            put("from", currentUser)
         }
-
         socket?.emit(Events.CONNECT_ACCEPT, obj)
-        Log.d(TAG, "ACCEPT EMITTED to $fromUser")
     }
 
-    fun onConnectAccepted(
-        callback: (String) -> Unit
-    ) {
-        connectAcceptCallbacks += callback
-    }
+    fun onConnectAccepted(callback: (String) -> Unit) { connectAcceptCallbacks += callback }
 
-// =========================
-// SEND MESSAGE
-// =========================
+    fun onMessageReceived(callback: (String, String, String) -> Unit) { messageCallbacks += callback }
 
-    fun sendMessage(
-        toChatId: String,
-        from: String,
-        message: String
-    ) {
-
-        if (!isConnected()) {
-            return
-        }
-
+    fun sendTyping(chatId: String, from: String, to: String, isTyping: Boolean) {
+        if (!isConnected()) return
         val obj = JSONObject().apply {
-
-            put("chatId", toChatId)
-
+            put("chatId", chatId)
             put("from", from)
-
-            put("message", message)
+            put("to", to) // 🔥 Added target user for better routing
+            put("isTyping", isTyping)
         }
-
-        socket?.emit(
-            Events.CHAT_MESSAGE,
-            obj
-        )
-
-        Log.d(
-            TAG,
-            "MESSAGE SENT"
-        )
+        socket?.emit(Events.TYPING, obj)
+        Log.d(TAG, "Emitted typing state: $isTyping for $chatId to $to")
     }
 
-    fun onMessageReceived(
-        callback: (
-            String,
-            String,
-            String
-        ) -> Unit
-    ) {
-        messageCallbacks += callback
+    fun onTypingStatusChanged(callback: (String, String, Boolean) -> Unit) {
+        typingCallbacks += callback
     }
 
+    fun removeTypingStatusListener(callback: (String, String, Boolean) -> Unit) {
+        typingCallbacks -= callback
+    }
 
+    fun joinChat(chatId: String) {
+        lastJoinedChatId = chatId
+        if (!isConnected()) return
+        socket?.emit(Events.JOIN_CHAT, chatId)
+        Log.d(TAG, "Joined chat room: $chatId")
+    }
+
+    fun leaveChat(chatId: String) {
+        lastJoinedChatId = null
+        if (!isConnected()) return
+        socket?.emit(Events.LEAVE_CHAT, chatId)
+        Log.d(TAG, "Left chat room: $chatId")
+    }
 }

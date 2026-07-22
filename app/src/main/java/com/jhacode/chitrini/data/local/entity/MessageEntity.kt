@@ -23,5 +23,14 @@ data class MessageEntity(
     // 🔥 Reply Fields
     val replyToId: String? = null,
     val replyToSender: String? = null,
-    val replyToText: String? = null
+    val replyToText: String? = null,
+    val replyToImageId: String? = null,
+    val replyToImageKey: String? = null,
+    val replyToImageIv: String? = null,
+
+    // 🔥 Reaction Field (JSON String of reactions)
+    val reactions: String? = null,
+
+    // 🔥 Edit Flag
+    val isEdited: Boolean = false
 )
