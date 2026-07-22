@@ -14,7 +14,7 @@ import com.jhacode.chitrini.data.local.model.ChatPreview
         MessageEntity::class,
         ChatPreview::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = false
 )
 abstract class ChatDatabase : RoomDatabase() {

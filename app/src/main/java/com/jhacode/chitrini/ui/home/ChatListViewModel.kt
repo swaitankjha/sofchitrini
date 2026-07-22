@@ -151,4 +151,11 @@ class ChatListViewModel(
             chatDao.deleteChat(chatId)
         }
     }
+
+    fun removeMyProfilePic() {
+        viewModelScope.launch(Dispatchers.IO) {
+            MainRepository.getInstance().storeProfilePic(null)
+            _myProfilePic.value = null
+        }
+    }
 }

@@ -19,7 +19,9 @@ object MediaDownloader {
         onProgress: (Double) -> Unit = {}
     ): File? = withContext(Dispatchers.IO) {
         val cachedFile = File(context.cacheDir, "media_$fileId")
-        if (cachedFile.exists()) {
+        
+        // 🔥 Robust cache check
+        if (cachedFile.exists() && cachedFile.length() > 0) {
             return@withContext cachedFile
         }
 
@@ -32,14 +34,13 @@ object MediaDownloader {
             }
 
             // 2. Download from Appwrite
-            Log.d(TAG, "Downloading encrypted file: $fileId from bucket: ${AppwriteConfig.APPWRITE_BUCKET_ID}")
+            Log.d(TAG, "Downloading encrypted file: $fileId")
             val encryptedBytes = AppwriteManager.storage.getFileDownload(
                 bucketId = AppwriteConfig.APPWRITE_BUCKET_ID,
                 fileId = fileId
             )
 
             // 3. Decrypt locally
-            Log.d(TAG, "Decrypting file: $fileId")
             val decryptedBytes = MediaCryptoManager.decrypt(
                 data = encryptedBytes,
                 keyBase64 = encryptedKey,
@@ -55,5 +56,15 @@ object MediaDownloader {
             Log.e(TAG, "❌ Media download failed: ${e.message}", e)
             null
         }
+    }
+
+    fun deleteFromCache(context: Context, fileId: String) {
+        try {
+            val file = File(context.cacheDir, "media_$fileId")
+            if (file.exists()) {
+                file.delete()
+                Log.d(TAG, "🗑️ Deleted $fileId from local cache")
+            }
+        } catch (e: Exception) {}
     }
 }

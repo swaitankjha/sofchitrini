@@ -12,8 +12,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import java.io.File
 
@@ -22,7 +24,8 @@ fun ProfileHeader(
     username: String,
     profileFile: File?,
     onClose: () -> Unit,
-    onProfileClick: () -> Unit
+    onProfileClick: () -> Unit,
+    onRemoveClick: () -> Unit = {}
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -74,7 +77,13 @@ fun ProfileHeader(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        if (profileFile != null) {
+            TextButton(onClick = onRemoveClick) {
+                Text("Remove Photo", color = Color.Red, fontSize = 12.sp)
+            }
+        } else {
+            Spacer(Modifier.height(12.dp))
+        }
 
         Text(
             text = username,

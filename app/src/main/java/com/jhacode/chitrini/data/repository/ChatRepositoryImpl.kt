@@ -43,18 +43,24 @@ class ChatRepositoryImpl(
         messageDao.deleteMessagesByChatId(chatId)
     }
 
-    suspend fun deleteMessage(messageId: String) {
+    suspend fun deleteMessageLocally(messageId: String) {
         messageDao.deleteMessageById(messageId)
     }
 
     suspend fun getMessage(messageId: String) = messageDao.getMessageById(messageId)
 
-    suspend fun markAsDeleted(messageId: String) {
-        // 1. Update the message itself
-        messageDao.updateMessageText(messageId, "[deleted_by_sender]")
-
-        // 2. 🔥 Update the Chat Preview (Recent Menu)
+    suspend fun markAsDeleted(messageId: String, context: android.content.Context? = null) {
         val msg = messageDao.getMessageById(messageId)
+        
+        // 🔥 1. Clear physical media cache
+        if (context != null && msg?.fileId != null) {
+            com.jhacode.chitrini.storage.MediaDownloader.deleteFromCache(context, msg.fileId)
+        }
+
+        // 2. Clear fields in DB
+        messageDao.markAsDeleted(messageId)
+
+        // 3. 🔥 Update the Chat Preview (Recent Menu)
         if (msg != null) {
             chatDao.insertChat(
                 com.jhacode.chitrini.data.local.model.ChatPreview(
@@ -66,6 +72,14 @@ class ChatRepositoryImpl(
                 )
             )
         }
+    }
+
+    suspend fun updateReactions(messageId: String, reactionsJson: String?) {
+        messageDao.updateReactions(messageId, reactionsJson)
+    }
+
+    suspend fun editMessage(messageId: String, newText: String) {
+        messageDao.editMessage(messageId, newText)
     }
 
     suspend fun updateMessageStatus(messageId: String, status: String) {

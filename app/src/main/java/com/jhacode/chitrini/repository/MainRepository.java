@@ -69,6 +69,10 @@ public class MainRepository {
         this.context = context;
     }
 
+    public Context getContext() {
+        return context;
+    }
+
     // ================= LOGIN =================
 
     public void login(String username, Context context, SuccessCallBack callBack) {
@@ -143,6 +147,9 @@ public class MainRepository {
 
     public void setUserStatus(String status) { firebaseClient.setUserStatus(status); }
     public void observeUserStatus(String username, FirebaseClient.StatusCallBack callBack) { firebaseClient.observeUserStatus(username, callBack); }
+
+    public void setTypingStatus(String target, boolean isTyping) { firebaseClient.setTypingStatus(target, isTyping); }
+    public void observeUserTyping(String username, FirebaseClient.TypingCallBack callBack) { firebaseClient.observeUserTyping(username, callBack); }
 
     // ================= CHAT =================
 
@@ -319,6 +326,10 @@ public class MainRepository {
     public void getProfilePic(String username, FirebaseClient.SuccessCallBackWithData callBack) {
         if (username == null) return;
         firebaseClient.getProfilePic(username, callBack);
+    }
+
+    public void checkAppUpdate(FirebaseClient.UpdateCallBack callBack) {
+        firebaseClient.checkAppUpdate(callBack);
     }
 
     // ================= DYNAMIC TURN SERVER FETCHING =================

@@ -19,5 +19,15 @@ data class MessageSignal(
     // 🔥 Reply metadata
     val replyToId: String? = null,
     val replyToSender: String? = null,
-    val replyToText: String? = null
+    val replyToText: String? = null,
+    val replyToImageId: String? = null,
+    val replyToImageKey: String? = null,
+    val replyToImageIv: String? = null,
+
+    // 🔥 Reaction metadata
+    val reactionEmoji: String? = null,
+    val isReactionRemove: Boolean = false,
+
+    // 🔥 Edit metadata
+    val isEdit: Boolean = false
 )

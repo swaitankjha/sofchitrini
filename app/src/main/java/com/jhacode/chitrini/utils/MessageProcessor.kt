@@ -42,6 +42,31 @@ object MessageProcessor {
 
                 val chatId = if (myUsername < model.sender) "${myUsername}_${model.sender}" else "${model.sender}_$myUsername"
 
+                // 🔥 HANDLE REACTION SIGNAL
+                if (signal.reactionEmoji != null || signal.isReactionRemove) {
+                    val msg = repository.getMessage(signal.messageId)
+                    if (msg != null) {
+                        val currentReactions = msg.reactions?.let {
+                            try { gson.fromJson(it, Map::class.java) as MutableMap<String, String> }
+                            catch (e: Exception) { mutableMapOf<String, String>() }
+                        } ?: mutableMapOf()
+                        
+                        if (signal.isReactionRemove) {
+                            currentReactions.remove(model.sender)
+                        } else {
+                            currentReactions[model.sender] = signal.reactionEmoji!!
+                        }
+                        repository.updateReactions(signal.messageId, if (currentReactions.isEmpty()) null else gson.toJson(currentReactions))
+                    }
+                    return@launch
+                }
+
+                // 🔥 HANDLE EDIT SIGNAL
+                if (signal.isEdit) {
+                    repository.editMessage(signal.messageId, signal.text)
+                    return@launch
+                }
+
                 val entity = MessageEntity(
                     messageId = signal.messageId,
                     chatId = chatId,
@@ -58,7 +83,10 @@ object MessageProcessor {
                     originalFileName = signal.originalFileName,
                     replyToId = signal.replyToId,
                     replyToSender = signal.replyToSender,
-                    replyToText = signal.replyToText
+                    replyToText = signal.replyToText,
+                    replyToImageId = signal.replyToImageId,
+                    replyToImageKey = signal.replyToImageKey,
+                    replyToImageIv = signal.replyToImageIv
                 )
 
                 // 3. Save to local Database
@@ -68,7 +96,10 @@ object MessageProcessor {
                 MainRepository.getInstance().sendDeliveryReceipt(model.sender, signal.messageId)
 
                 // 5. Handle UI Alerting using AppState
-                val isChattingWithThisUser = AppState.isChatScreenActive && AppState.currentChatUser == model.sender
+                // 🔥 MUST BE IN FOREGROUND to mark as seen immediately
+                val isChattingWithThisUser = AppState.isForeground && 
+                                            AppState.isChatScreenActive && 
+                                            AppState.currentChatUser == model.sender
                 
                 if (!isChattingWithThisUser) {
                     val cleanNotificationText = when(signal.type) {

@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.jhacode.chitrini.data.local.entity.MessageEntity
 import com.jhacode.chitrini.data.repository.ChatRepositoryImpl
+import com.jhacode.chitrini.network.SocketManager
 import com.jhacode.chitrini.repository.MainRepository
 import com.jhacode.chitrini.storage.MediaDownloader
 import com.jhacode.chitrini.storage.MediaUploader
@@ -29,12 +30,19 @@ class ChatViewModel(
     private val repository: ChatRepositoryImpl
 ) : ViewModel() {
 
-    val otherUsername = chatId.split("_").firstOrNull { it.trim() != myUsername.trim() }?.trim() ?: ""
+    // 🔥 Better matching to ensure we get the other user correctly
+    val otherUsername: String = chatId.split("_")
+        .map { it.trim() }
+        .firstOrNull { it != myUsername.trim() } ?: ""
+
     private var otherPublicKey: String? = null
     private val gson = Gson()
 
     var otherUserStatus by mutableStateOf("offline")
     var isOtherUserDeleted by mutableStateOf(false)
+    
+    // 🔥 Typing State
+    var isOtherUserTyping by mutableStateOf(false)
 
     // Media and UI state
     var isUploading by mutableStateOf(false)
@@ -42,6 +50,9 @@ class ChatViewModel(
     
     // 🔥 Reply State
     var replyingTo by mutableStateOf<MessageEntity?>(null)
+
+    // 🔥 Edit State
+    var editingMessage by mutableStateOf<MessageEntity?>(null)
 
     // =========================
     // 💬 OBSERVE MESSAGES
@@ -52,6 +63,9 @@ class ChatViewModel(
     // 🔌 INITIALIZATION
     // =========================
     fun init(context: Context) {
+        // 🔥 Join socket room for typing events
+        SocketManager.joinChat(chatId)
+
         // Run lookups in IO
         viewModelScope.launch(Dispatchers.IO) {
             // 1. Fetch other user's public key
@@ -74,7 +88,21 @@ class ChatViewModel(
             
             // 4. Fetch other user's profile pic
             fetchOtherProfilePic(context)
+            
+            // 5. Observe Typing Status via Firebase (Robust)
+            MainRepository.getInstance().observeUserTyping(otherUsername) { isTyping ->
+                isOtherUserTyping = isTyping
+            }
         }
+    }
+
+    fun setTyping(isTyping: Boolean, context: Context) {
+        val prefs = context.getSharedPreferences("chitrini_prefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("show_typing_status", true)) {
+            if (isTyping) return
+        }
+        
+        MainRepository.getInstance().setTypingStatus(otherUsername, isTyping)
     }
 
     private suspend fun markAllAsSeen() {
@@ -88,24 +116,30 @@ class ChatViewModel(
     }
 
     private fun fetchOtherProfilePic(context: Context) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // 🔥 Ensure Appwrite session is ready before downloading
-            com.jhacode.chitrini.storage.AppwriteManager.ensureSession()
-            
-            MainRepository.getInstance().getProfilePic(otherUsername) { json ->
-                if (json != null) {
-                    viewModelScope.launch(Dispatchers.IO) {
-                        try {
-                            val data = gson.fromJson(json, ProfilePicData::class.java)
-                            val file = MediaDownloader.downloadMedia(context, data.fileId, data.encryptedKey, data.iv)
+        if (otherUsername.isBlank()) return
+        
+        MainRepository.getInstance().getProfilePic(otherUsername) { json ->
+            if (json != null) {
+                viewModelScope.launch(Dispatchers.IO) {
+                    try {
+                        val data = gson.fromJson(json, ProfilePicData::class.java)
+                        Log.d("ChatViewModel", "Fetching profile pic for $otherUsername, fileId: ${data.fileId}")
+                        
+                        val file = MediaDownloader.downloadMedia(context, data.fileId, data.encryptedKey, data.iv)
+                        if (file != null) {
                             withContext(Dispatchers.Main) {
                                 otherProfileFile = file
+                                Log.d("ChatViewModel", "Profile pic loaded: ${file.absolutePath}")
                             }
-                        } catch (e: Exception) {
-                            Log.e("ChatViewModel", "Profile pic fetch failed", e)
+                        } else {
+                            Log.e("ChatViewModel", "Download failed for $otherUsername")
                         }
+                    } catch (e: Exception) {
+                        Log.e("ChatViewModel", "Profile pic parsing failed", e)
                     }
                 }
+            } else {
+                Log.d("ChatViewModel", "No profile pic found for $otherUsername in Firebase")
             }
         }
     }
@@ -115,6 +149,25 @@ class ChatViewModel(
     // =========================
     fun sendMessage(text: String) {
         if (text.isBlank() || isOtherUserDeleted) return
+
+        if (editingMessage != null) {
+            val msgToEdit = editingMessage!!
+            editingMessage = null
+            
+            viewModelScope.launch(Dispatchers.IO) {
+                repository.editMessage(msgToEdit.messageId, text.trim())
+                val signal = MessageSignal(
+                    messageId = msgToEdit.messageId,
+                    text = text.trim(),
+                    timestamp = System.currentTimeMillis(),
+                    isEdit = true
+                )
+                val signalJson = gson.toJson(signal)
+                val enc = EncryptionManager.encrypt(signalJson, otherPublicKey) ?: signalJson
+                MainRepository.getInstance().sendChatMessage(otherUsername, enc, msgToEdit.messageId)
+            }
+            return
+        }
 
         val messageId = UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis()
@@ -129,7 +182,10 @@ class ChatViewModel(
             messageType = "TEXT",
             replyToId = replyingTo?.messageId,
             replyToSender = replyingTo?.sender,
-            replyToText = replyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" }
+            replyToText = replyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" },
+            replyToImageId = replyingTo?.fileId,
+            replyToImageKey = replyingTo?.encryptedKey,
+            replyToImageIv = replyingTo?.iv
         )
 
         val currentReplyingTo = replyingTo // Capture for signal
@@ -147,7 +203,10 @@ class ChatViewModel(
                 type = "TEXT",
                 replyToId = currentReplyingTo?.messageId,
                 replyToSender = currentReplyingTo?.sender,
-                replyToText = currentReplyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" }
+                replyToText = currentReplyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" },
+                replyToImageId = currentReplyingTo?.fileId,
+                replyToImageKey = currentReplyingTo?.encryptedKey,
+                replyToImageIv = currentReplyingTo?.iv
             )
             val signalJson = gson.toJson(signal)
             val encryptedSignal = EncryptionManager.encrypt(signalJson, otherPublicKey) ?: signalJson
@@ -161,7 +220,7 @@ class ChatViewModel(
     // =========================
     // 📤 SEND MEDIA (IMAGE, etc)
     // =========================
-    fun sendMedia(context: Context, uri: Uri, mimeType: String) {
+    fun sendMedia(context: Context, uri: Uri, mimeType: String, caption: String? = null) {
         if (isOtherUserDeleted) return
         
         isUploading = true
@@ -189,7 +248,7 @@ class ChatViewModel(
                     messageId = messageId,
                     chatId = chatId,
                     sender = myUsername,
-                    text = "[Media]",
+                    text = caption?.trim() ?: "[Media]",
                     timestamp = timestamp,
                     status = "sent",
                     messageType = type,
@@ -201,7 +260,10 @@ class ChatViewModel(
                     originalFileName = result.originalFileName,
                     replyToId = replyingTo?.messageId,
                     replyToSender = replyingTo?.sender,
-                    replyToText = replyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" }
+                    replyToText = replyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" },
+                    replyToImageId = replyingTo?.fileId,
+                    replyToImageKey = replyingTo?.encryptedKey,
+                    replyToImageIv = replyingTo?.iv
                 )
 
                 val currentReplyingTo = replyingTo
@@ -215,7 +277,7 @@ class ChatViewModel(
                 // 2. Prepare Signal
                 val signal = MessageSignal(
                     messageId = messageId,
-                    text = "[Media]",
+                    text = caption?.trim() ?: "[Media]",
                     timestamp = timestamp,
                     type = type,
                     fileId = result.fileId,
@@ -226,7 +288,10 @@ class ChatViewModel(
                     originalFileName = result.originalFileName,
                     replyToId = currentReplyingTo?.messageId,
                     replyToSender = currentReplyingTo?.sender,
-                    replyToText = currentReplyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" }
+                    replyToText = currentReplyingTo?.let { if (it.messageType == "TEXT") it.text else "[${it.messageType}]" },
+                    replyToImageId = currentReplyingTo?.fileId,
+                    replyToImageKey = currentReplyingTo?.encryptedKey,
+                    replyToImageIv = currentReplyingTo?.iv
                 )
                 val signalJson = gson.toJson(signal)
                 val encryptedSignal = EncryptionManager.encrypt(signalJson, otherPublicKey) ?: signalJson
@@ -240,15 +305,70 @@ class ChatViewModel(
     }
 
     // =========================
-    // 🔥 DELETE FOR EVERYONE (15 min limit)
+    // 🔥 REACTIONS
     // =========================
-    fun deleteMessageForEveryone(message: MessageEntity) {
+    fun reactToMessage(message: MessageEntity, emoji: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Get current reactions
+            val currentReactions = message.reactions?.let {
+                try { gson.fromJson(it, Map::class.java) as MutableMap<String, String> } 
+                catch (e: Exception) { mutableMapOf<String, String>() }
+            } ?: mutableMapOf()
+
+            // 2. Toggle Logic: If same emoji, remove it. If different, change it.
+            val isRemoving = currentReactions[myUsername] == emoji
+            if (isRemoving) {
+                currentReactions.remove(myUsername)
+            } else {
+                currentReactions[myUsername] = emoji
+            }
+            
+            val updatedJson = if (currentReactions.isEmpty()) null else gson.toJson(currentReactions)
+
+            // 3. Save locally
+            repository.updateReactions(message.messageId, updatedJson)
+
+            // 4. Signal other user
+            val signal = MessageSignal(
+                messageId = message.messageId,
+                text = "[Reaction]",
+                timestamp = System.currentTimeMillis(),
+                reactionEmoji = if (isRemoving) null else emoji,
+                isReactionRemove = isRemoving
+            )
+            val signalJson = gson.toJson(signal)
+            val enc = EncryptionManager.encrypt(signalJson, otherPublicKey) ?: signalJson
+            MainRepository.getInstance().sendChatMessage(otherUsername, enc, message.messageId)
+        }
+    }
+
+    fun deleteMessageForMe(messageId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteMessageLocally(messageId)
+        }
+    }
+
+    fun deleteMessageForEveryone(message: MessageEntity, context: Context) {
         val now = System.currentTimeMillis()
-        if (now - message.timestamp > 30 * 60 * 1000) return
+        if (now - message.timestamp > 30 * 60 * 1000) {
+             Toast.makeText(context, "Too late to delete for everyone", Toast.LENGTH_SHORT).show()
+             return
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
-            repository.markAsDeleted(message.messageId)
+            repository.markAsDeleted(message.messageId, context)
             MainRepository.getInstance().sendDeleteSignal(otherUsername, message.messageId)
         }
+    }
+
+    fun removeMyProfilePic() {
+        viewModelScope.launch(Dispatchers.IO) {
+            MainRepository.getInstance().storeProfilePic(null)
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        SocketManager.leaveChat(chatId)
     }
 }
