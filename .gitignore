@@ -30,3 +30,6 @@ local.properties
 
 # Appwrite / Sensitive Configs (Optional: remove if you want them in git)
 # app/src/main/java/com/jhacode/chitrini/storage/AppwriteConfig.kt
+
+# Release APKs
+app/release/
