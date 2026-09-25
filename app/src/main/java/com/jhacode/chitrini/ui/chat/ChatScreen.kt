@@ -48,6 +48,7 @@ fun ChatScreen(
     onVideoCall: () -> Unit
 ) {
     val context = LocalContext.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val settingsViewModel = remember { SettingsViewModel(context) }
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
@@ -102,7 +103,10 @@ fun ChatScreen(
         if (previewFile != null) previewFile = null
         else if (showEmojiPicker) showEmojiPicker = false
         else if (selectedMessageForActions != null) selectedMessageForActions = null
-        else onBack()
+        else {
+            focusManager.clearFocus()
+            onBack()
+        }
     }
 
     if (showDeleteOptions && selectedMessageForActions != null) {
@@ -198,7 +202,10 @@ fun ChatScreen(
                             status = viewModel.otherUserStatus,
                             isDeleted = viewModel.isOtherUserDeleted,
                             profileFile = viewModel.otherProfileFile,
-                            onBack = onBack,
+                            onBack = {
+                                focusManager.clearFocus()
+                                onBack()
+                            },
                             onAudioCall = onAudioCall,
                             onVideoCall = onVideoCall,
                             onProfileClick = {

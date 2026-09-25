@@ -54,4 +54,10 @@ interface MessageDao {
 
     @Query("UPDATE messages SET text = :newText, isEdited = 1 WHERE messageId = :messageId")
     suspend fun editMessage(messageId: String, newText: String)
+
+    @Query("SELECT * FROM messages")
+    suspend fun getAllMessages(): List<MessageEntity>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMessages(messages: List<MessageEntity>)
 }

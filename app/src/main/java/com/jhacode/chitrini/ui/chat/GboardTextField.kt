@@ -14,6 +14,7 @@ import androidx.appcompat.widget.AppCompatEditText
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.inputmethod.EditorInfoCompat
 import androidx.core.view.inputmethod.InputConnectionCompat
@@ -31,8 +32,21 @@ fun GboardTextField(
 ) {
     val textColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val hintColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val context = LocalContext.current
 
-    // 🔥 Native View instance kept alive across recompositions
+    // 🔥 HIDE KEYBOARD ON EXIT
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                val activity = context as? android.app.Activity
+                val token = activity?.currentFocus?.windowToken ?: activity?.window?.decorView?.windowToken
+                imm.hideSoftInputFromWindow(token, 0)
+            } catch (e: Exception) {}
+        }
+    }
+
+    // Native View instance kept alive across recompositions
     AndroidView(
         factory = { context ->
             Log.d(TAG, "Factory: Creating GboardEditText")

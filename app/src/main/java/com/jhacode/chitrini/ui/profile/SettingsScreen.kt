@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,6 +49,8 @@ import com.jhacode.chitrini.update.repository.UpdateRepository
 import com.jhacode.chitrini.update.ui.UpdateDialog
 import com.jhacode.chitrini.update.viewmodel.UpdateViewModel
 import com.jhacode.chitrini.utils.EncryptionManager
+import com.jhacode.chitrini.utils.BackupManager
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import java.io.File
 import java.io.FileOutputStream
@@ -68,6 +72,16 @@ fun SettingsScreen(
         UpdateViewModel(repo, manager, currentVersionCode)
     }
     val updateState by updateViewModel.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    val myUsername = prefs.getString("username", "") ?: ""
+
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { scope.launch { BackupManager.exportChats(context, it) } }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { scope.launch { BackupManager.importChats(context, it, myUsername) } }
+    }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -306,6 +320,31 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.primary,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant
                             )
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+
+                    Text("Backup & Restore", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { exportLauncher.launch("chitrini_backup_${System.currentTimeMillis()}.json") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Backup, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Export", fontSize = 12.sp)
+                        }
+                        OutlinedButton(
+                            onClick = { importLauncher.launch(arrayOf("application/json", "application/octet-stream")) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.Restore, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Import", fontSize = 12.sp)
                         }
                     }
                 }
